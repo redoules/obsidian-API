@@ -3,16 +3,18 @@ import os
 from main import app
 client = TestClient(app)
 
+def get_bearer_token():
+    return os.environ["BEARER_TOKEN"]
 
 def test_file_exists():
     os.environ["VAULT_PATH"] = "./test_vault"
-    response = client.get("/exists?path=file1.md")
+    response = client.get("/exists?path=file1.md", headers={"Authorization": f'Bearer {get_bearer_token()}'})
     assert response.status_code == 200
     assert response.json() == {"file exists":True}
-    response = client.get("/exists?path=file3.md")
+    response = client.get("/exists?path=file3.md", headers={"Authorization": f'Bearer {get_bearer_token()}'})
     assert response.status_code == 200
     assert response.json() == {"file exists":False}
-    response = client.get("/exists")
+    response = client.get("/exists", headers={"Authorization": f'Bearer {get_bearer_token()}'})
     assert response.status_code == 400
     assert response.json() == {"detail":"Path not provided"}
     
@@ -27,6 +29,7 @@ def test_append_to_file():
     response = client.post(
         "/append",
         json=fake_data,
+        headers={"Authorization": f'Bearer {get_bearer_token()}'}
         )
        
     with open(os.path.join(os.environ["VAULT_PATH"], fake_data["path"]), "r", encoding="UTF-8") as f:
@@ -40,28 +43,28 @@ def test_append_to_file():
 
 def test_file_content():
     os.environ["VAULT_PATH"] = "./test_vault"
-    response = client.get("/content?path=file1.md")
+    response = client.get("/content?path=file1.md", headers={"Authorization": f'Bearer {get_bearer_token()}'})
     assert response.status_code == 200
     assert response.json() == {"content": "# File 1\n---\ntag: tag1, tag2\nkeywords: keyword1, keyword2\n---"}
 
-    response = client.get("/content?path=file3.md")
+    response = client.get("/content?path=file3.md", headers={"Authorization": f'Bearer {get_bearer_token()}'})
     assert response.status_code == 400
     assert response.json() == {"detail": "File does not exist"}
 
 
 def test_file_metadata():
     os.environ["VAULT_PATH"] = "./test_vault"
-    response = client.get("/metadata?path=file1.md")
+    response = client.get("/metadata?path=file1.md", headers={"Authorization": f'Bearer {get_bearer_token()}'})
     assert response.status_code == 200
     assert response.json() == {"metadata": {"tag": 'tag1, tag2', 'keywords': 'keyword1, keyword2'}}
 
-    response = client.get("/metadata?path=file1_metadata_lower_in_the_page.md")
+    response = client.get("/metadata?path=file1_metadata_lower_in_the_page.md", headers={"Authorization": f'Bearer {get_bearer_token()}'})
     assert response.status_code == 200
     assert response.json() == {"metadata": {"tag": 'tag1, tag2', 'keywords': 'keyword1, keyword2'}}
-    response = client.get("/metadata?path=file2.md")
+    response = client.get("/metadata?path=file2.md", headers={"Authorization": f'Bearer {get_bearer_token()}'})
     assert response.status_code == 200
     assert response.json() == {"metadata": {}}
 
-    response = client.get("/metadata?path=file3.md")
+    response = client.get("/metadata?path=file3.md", headers={"Authorization": f'Bearer {get_bearer_token()}'})
     assert response.status_code == 400
     assert response.json() == {"detail": "File does not exist"}

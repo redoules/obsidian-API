@@ -8,7 +8,7 @@ Install via docker:
 
 ```bash
 docker build -t obsidian-api .
-docker run -d -p 5000:80 -v /path/to/your/vault:/vault obsidian-api
+docker run -d -p 5000:80 -v /path/to/your/vault:/vault obsidian-api -e VAULT_PATH=/vault -e SECRET_KEY=your-secret-key
 ```
 
 ## Usage
