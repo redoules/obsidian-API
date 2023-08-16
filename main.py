@@ -88,7 +88,9 @@ async def file_metadata(path: Optional[str] = None) -> dict:
 
 
             #else return an empty dict
-            
-        return {"metadata": yaml.safe_load(metadata)}
+        metadata = yaml.safe_load(metadata)
+        if metadata is None:
+            metadata = {}
+        return {"metadata": metadata}
     else:
         raise HTTPException(status_code=400, detail="File does not exist")
