@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional, Annotated
-import os 
+import os
 import yaml
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -12,20 +12,40 @@ app = FastAPI()
 
 
 # Authentication
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+
 # to get a string like this run:
 # openssl rand -hex 32
-SECRET_KEY = os.environ["SECRET_KEY"]#"6a247d8d0aacc1ccab599576e8208acd250cbe2cfdb8a3f8900c0d7e853c2c06"
+try:
+    SECRET_KEY = os.environ[
+        "SECRET_KEY"
+    ]  
+except KeyError:
+    from subprocess import run
+    SECRET_KEY = (
+        run("openssl rand -hex 32", capture_output=True, shell=True, check=False)
+        .stdout.decode("utf-8")
+        .strip()
+    )
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+try:
+    ACCESS_TOKEN_EXPIRE_MINUTES = os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"]
+except KeyError:
+    ACCESS_TOKEN_EXPIRE_MINUTES = -1
 
 
-fake_users_db = {
-    "johndoe": {
-        "username": "johndoe",
-        "full_name": "John Doe",
-        "email": "johndoe@example.com",
-        "hashed_password": "$2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQoeG6Lruj3vjPGga31lW",
-        "disabled": False,
+# hash the password with bcrypt
+
+hashed_password = pwd_context.hash(os.environ["PASSWORD"])
+os.environ.pop("PASSWORD")
+env_users_db = {
+    os.environ["USER"]: {
+        "username": os.environ["USER"],
+        "hashed_password": hashed_password,
     }
 }
 
@@ -34,25 +54,15 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
-
 class TokenData(BaseModel):
     username: str | None = None
 
-
 class User(BaseModel):
     username: str
-    email: str | None = None
-    full_name: str | None = None
-    disabled: bool | None = None
-
 
 class UserInDB(User):
     hashed_password: str
 
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 app = FastAPI()
 
@@ -71,8 +81,8 @@ def get_user(db, username: str):
         return UserInDB(**user_dict)
 
 
-def authenticate_user(fake_db, username: str, password: str):
-    user = get_user(fake_db, username)
+def authenticate_user(db, username: str, password: str):
+    user = get_user(db, username)
     if not user:
         return False
     if not verify_password(password, user.hashed_password):
@@ -84,9 +94,8 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
+        to_encode.update({"exp": expire})
+
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
@@ -105,8 +114,8 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
         token_data = TokenData(username=username)
     except JWTError:
         raise credentials_exception
-    
-    user = get_user(fake_users_db, username=token_data.username)
+
+    user = get_user(env_users_db, username=token_data.username)
     if user is None:
         raise credentials_exception
     return user
@@ -115,8 +124,6 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
 async def get_current_active_user(
     current_user: Annotated[User, Depends(get_current_user)]
 ):
-    if current_user.disabled:
-        raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
 
@@ -124,33 +131,35 @@ async def get_current_active_user(
 async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
 ):
-    user = authenticate_user(fake_users_db, form_data.username, form_data.password)
+    user = authenticate_user(env_users_db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    if ACCESS_TOKEN_EXPIRE_MINUTES == "-1":
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    else:
+        access_token_expires = None
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-
-
 # API functionnalities
-    
-@app.get("/exists")
-async def file_exists( user: Annotated[User, Depends(get_current_active_user)], path: Optional[str] = None) -> dict:
-    """Check if a file exists
+@app.get("/api/v1/exists")
+async def file_exists(
+    token: Annotated[str, Depends(oauth2_scheme)], path: Optional[str] = None
+) -> dict:
+    """Check if a file exists in the vault
 
     Args:
         path (Optional[str], optional): Path to the file. Defaults to None.
 
     Returns:
-        dict: _description_
+        dict: A json object notifying if the file exists or not under the "file exists" key
     """
 
     if path is None:
@@ -162,28 +171,57 @@ async def file_exists( user: Annotated[User, Depends(get_current_active_user)], 
     else:
         return {"file exists": False}
 
+
 class append_Model(BaseModel):
-    path : str
+    """Model used to append text to a file in the vault. It is comprised of the path to the file and the text to add 
+    """
+    path: str
     text: str
 
-@app.post("/append")
-def append_to_file(user: Annotated[User, Depends(get_current_active_user)], item: append_Model) -> dict:
-    """
-    Append to a file (create if not exists) located in a path
-    """
+
+@app.post("/api/v1/append")
+def append_to_file(
+    _: Annotated[str, Depends(oauth2_scheme)], item: append_Model
+) -> dict:
+    """Add text to a file in the vault
+
+    Args:
+        _ (Annotated[str, Depends): authentication token
+        item (append_Model): item comprised of the path to the file and the text to add
+
+    Raises:
+        HTTPException: Code 400 if the path is not provided
+
+    Returns:
+        dict: A json object recaping the action performed under the "action" key
+    """    
 
     if item.path is None:
         raise HTTPException(status_code=400, detail="Path not provided")
-    
+
     vault_path = os.getenv("VAULT_PATH")
     with open(os.path.join(vault_path, item.path), "a") as f:
-        f.write("\n"+item.text)
+        f.write("\n" + item.text)
     return {"action": f"added {item.text} to {item.path}"}
 
 
-@app.get("/content")
-async def file_content(user: Annotated[User, Depends(get_current_active_user)], path: Optional[str] = None) -> dict:
+@app.get("/api/v1/content")
+async def file_content(
+    _: Annotated[str, Depends(oauth2_scheme)], path: Optional[str] = None
+) -> dict:
+    """Retruns the content of a file in the vault
 
+    Args:
+        _ (Annotated[str, Depends): authentication token
+        path (Optional[str], optional): relative path of a file in the vault. Defaults to None.
+
+    Raises:
+        HTTPException: Code 400 if the path is not provided
+        HTTPException: Code 400 if the file does not exist
+
+    Returns:
+        dict: A json object containing the content of the file under the "content" key
+    """    
     if path is None:
         raise HTTPException(status_code=400, detail="Path not provided")
     vault_path = os.getenv("VAULT_PATH")
@@ -195,16 +233,30 @@ async def file_content(user: Annotated[User, Depends(get_current_active_user)], 
         raise HTTPException(status_code=400, detail="File does not exist")
 
 
-@app.get("/metadata")
-async def file_metadata(user: Annotated[User, Depends(get_current_active_user)], path: Optional[str] = None) -> dict:
+@app.get("/api/v1/metadata")
+async def file_metadata(
+    _: Annotated[str, Depends(oauth2_scheme)], path: Optional[str] = None
+) -> dict:
+    """Retruns the obsidian file properties
 
+    Args:
+        _ (Annotated[str, Depends): authentication token
+        path (Optional[str], optional): relative path of a file in the vault. Defaults to None.
+
+    Raises:
+        HTTPException: Code 400 if the path is not provided
+        HTTPException: Code 400 if the file does not exist
+
+    Returns:
+        dict: A json object containing the properties of the file under the "metadata" key
+    """
     if path is None:
         raise HTTPException(status_code=400, detail="Path not provided")
     vault_path = os.getenv("VAULT_PATH")
 
     if os.path.exists(os.path.join(vault_path, path)):
         with open(os.path.join(vault_path, path), "r") as f:
-            #read the file and if the file contains a yaml header contained between --- and --- return the yaml header
+            # read the file and if the file contains a yaml header contained between --- and --- return the yaml header
             file_content = f.readlines()
             metadata = ""
             reading_metadata = False
@@ -213,7 +265,7 @@ async def file_metadata(user: Annotated[User, Depends(get_current_active_user)],
                     break
                 elif reading_metadata and line != "---\n":
                     metadata += line
-                
+
                 if line == "":
                     pass
                 elif line != "---\n" and line != "\n":
@@ -221,8 +273,7 @@ async def file_metadata(user: Annotated[User, Depends(get_current_active_user)],
                 elif line == "---\n":
                     reading_metadata = True
 
-
-            #else return an empty dict
+            # else return an empty dict
         metadata = yaml.safe_load(metadata)
         if metadata is None:
             metadata = {}
