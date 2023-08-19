@@ -8,17 +8,18 @@ Install via docker:
 
 ```bash
 docker build -t obsidian-api .
-docker run -d -p 5000:80 -v /path/to/your/vault:/vault obsidian-api -e VAULT_PATH=/vault -e SECRET_KEY=your-secret-key
+docker run -d -p 5000:80 -v /path/to/your/vault:/vault -e SECRET_KEY=your-secret-key -e USER=your-username -e PASSWORD=your-password -e ACCESS_TOKEN_EXPIRE_MINUTES=30 obsidian-api 
+
 ```
 
 ## Usage
 
 Environment variables:
-* `VAULT_PATH`: path to your vault
-* `SECRET_KEY` (optionnal): secret key used to encrypt the files
+* `SECRET_KEY` (optionnal): secret key used to encrypt the files. If no SECRET_KEY is provided, one will be generated at launch
 * `USER` : username for basic auth
 * `PASSWORD` : password for basic auth
 * `ACCESS_TOKEN_EXPIRE_MINUTES` : expiration time for the access token (default: 30 minutes, no expiration if set to -1)
+
 ### Check if a file exists
 
 ```bash 
