@@ -1,5 +1,11 @@
-# obsidian-API
-Interact with you obsidian Vault using an API
+# Dockerized Obsidian Vault management REST API
+This project creates a small dockerized REST API allowing you to interact with you obsidian Vault programmatically
+
+At the moment, the following functionality is exposed via REST:
+ * Check if a file exists
+ * Append text to a file   
+ * Get a file's content
+ * Get a file's metadata
 
 
 ## Installation
@@ -7,9 +13,8 @@ Interact with you obsidian Vault using an API
 Install via docker:
 
 ```bash
-docker build -t obsidian-api .
-docker run -d -p 5000:80 -v /path/to/your/vault:/vault -e SECRET_KEY=your-secret-key -e USER=your-username -e PASSWORD=your-password -e ACCESS_TOKEN_EXPIRE_MINUTES=30 obsidian-api 
-
+docker pull guillaumeredoules/obsidian-api
+docker run -d -p 5000:8080 -v /path/to/your/vault:/vault -e SECRET_KEY=your-secret-key -e USER=your-username -e PASSWORD=your-password -e ACCESS_TOKEN_EXPIRE_MINUTES=30 obsidian-api 
 ```
 
 ## Usage
