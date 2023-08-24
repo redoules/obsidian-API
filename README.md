@@ -25,6 +25,12 @@ Environment variables:
 * `PASSWORD` : password for basic auth
 * `ACCESS_TOKEN_EXPIRE_MINUTES` : expiration time for the access token (default: 30 minutes, no expiration if set to -1)
 
+### Access Swagger documentation
+
+```bash
+curl -X GET http://localhost:8080/docs
+```
+
 ### Check if a file exists
 
 ```bash 
